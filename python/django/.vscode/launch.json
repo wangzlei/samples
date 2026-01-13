@@ -1,0 +1,46 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Django Debug Server",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/app.py",
+            "args": ["8000"],
+            "python": "${workspaceFolder}/../venv/bin/python",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "mysite.settings",
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/.."
+            },
+            "justMyCode": false,
+            "django": true,
+            "autoReload": {
+                "enable": true,
+                "include": ["**/*.py"],
+                "exclude": ["**/site-packages/**"]
+            }
+        },
+        {
+            "name": "Django Debug Server (Development)",
+            "type": "python", 
+            "request": "launch",
+            "program": "${workspaceFolder}/manage.py",
+            "args": [
+                "runserver",
+                "127.0.0.1:8000",
+                "--noreload"
+            ],
+            "python": "${workspaceFolder}/../venv/bin/python",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "DJANGO_SETTINGS_MODULE": "mysite.settings",
+                "PYTHONPATH": "${workspaceFolder}:${workspaceFolder}/.."
+            },
+            "justMyCode": false,
+            "django": true
+        }
+    ]
+}
