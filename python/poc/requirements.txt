@@ -1,0 +1,15 @@
+# OpenTelemetry Managed Environment Injection - Requirements
+
+# Core OpenTelemetry SDK
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+
+# OpenTelemetry Instrumentation (for zero-code scenario)
+opentelemetry-instrumentation>=0.41b0
+
+# Flask instrumentation (for Scenario A testing)
+opentelemetry-instrumentation-flask>=0.41b0
+Flask>=2.3.0
+
+# Additional utilities
+Werkzeug>=2.3.0
