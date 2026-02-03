@@ -27,9 +27,9 @@ on:
       - main
 
 env:
-  SOURCE_BUCKET_NAME: ${{ github.event.inputs.source_bucket_name || format('adot-python-layer-test-{0}', github.run_id) }}
-  BUCKET_NAME: ${{ github.event.inputs.bucket_name || format('adot-python-layer-test-{0}', github.run_id) }}
-  LAYER_ARTIFACT_NAME: ${{ github.event.inputs.layer_artifact_name || 'aws-opentelemetry-python-layer.zip' }}
+  SOURCE_BUCKET_NAME: ${{ github.event.inputs.source_bucket_name || 'test-sign-test' }}
+  BUCKET_NAME: ${{ github.event.inputs.bucket_name || 'test-sign-test1' }}
+  LAYER_ARTIFACT_NAME: ${{ github.event.inputs.layer_artifact_name || 'function.zip' }}
 
 jobs:
   test-s3-upload-signing:
