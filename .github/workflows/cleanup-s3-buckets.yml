@@ -1,0 +1,93 @@
+name: Cleanup S3 Buckets
+
+on:
+  workflow_dispatch:  # Manual trigger with inputs
+    inputs:
+      bucket_name:
+        description: 'Target S3 Bucket Name to delete'
+        required: false
+        default: 'test-sign-test1'
+        type: string
+
+env:
+  BUCKET_NAME: ${{ github.event.inputs.bucket_name || 'test-sign-test1' }}
+
+jobs:
+  cleanup-s3-buckets:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write   # Required for OIDC authentication
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+      
+      - name: Delete Target Bucket
+        continue-on-error: true
+        run: |
+          echo "Cleaning up target bucket: ${{ env.BUCKET_NAME }}"
+          
+          # Check if bucket exists
+          if aws s3 ls "s3://${{ env.BUCKET_NAME }}" 2>/dev/null; then
+            echo "Target bucket exists, proceeding with deletion..."
+            
+            # List objects before deletion
+            echo "Objects in target bucket:"
+            aws s3 ls "s3://${{ env.BUCKET_NAME }}" --recursive || true
+            
+            # Delete all objects in the bucket (including versioned objects)
+            echo "Deleting all objects..."
+            aws s3 rm "s3://${{ env.BUCKET_NAME }}" --recursive || true
+            
+            # Delete all versions if versioning is enabled
+            echo "Checking for object versions..."
+            aws s3api list-object-versions \
+              --bucket "${{ env.BUCKET_NAME }}" \
+              --output json \
+              --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' > versions.json || true
+            
+            if [ -s versions.json ] && [ "$(cat versions.json | jq '.Objects | length')" -gt 0 ]; then
+              echo "Deleting object versions..."
+              aws s3api delete-objects \
+                --bucket "${{ env.BUCKET_NAME }}" \
+                --delete file://versions.json || true
+            fi
+            
+            # Delete all delete markers if any
+            echo "Checking for delete markers..."
+            aws s3api list-object-versions \
+              --bucket "${{ env.BUCKET_NAME }}" \
+              --output json \
+              --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' > markers.json || true
+            
+            if [ -s markers.json ] && [ "$(cat markers.json | jq '.Objects | length')" -gt 0 ]; then
+              echo "Deleting delete markers..."
+              aws s3api delete-objects \
+                --bucket "${{ env.BUCKET_NAME }}" \
+                --delete file://markers.json || true
+            fi
+            
+            # Delete the bucket
+            echo "Deleting target bucket..."
+            aws s3 rb "s3://${{ env.BUCKET_NAME }}" --force
+            echo "✓ Target bucket ${{ env.BUCKET_NAME }} deleted successfully"
+          else
+            echo "Target bucket ${{ env.BUCKET_NAME }} does not exist, skipping..."
+          fi
+      
+      - name: Cleanup Summary
+        run: |
+          echo "================================"
+          echo "Cleanup Summary"
+          echo "================================"
+          echo "✓ Target bucket ${{ env.BUCKET_NAME }} cleanup: Completed"
+          echo "================================"
