@@ -74,20 +74,41 @@ jobs:
           echo "PROFILE is: $PROFILE"
           
           echo "Starting signing job..."
-          JOB_ID=$(aws signer start-signing-job \
+          # Capture both stdout and stderr to properly handle errors
+          SIGNING_OUTPUT=$(aws signer start-signing-job \
             --source "s3={bucketName=${{ env.BUCKET_NAME }},key=${{ env.LAYER_ARTIFACT_NAME }},version=null}" \
             --destination "s3={bucketName=${{ env.BUCKET_NAME }},prefix=signed-}" \
             --profile-name lambdaFunction \
-            --query 'jobId' --output text 2>/dev/null) || exit 0
+            --query 'jobId' --output text 2>&1)
+          SIGNING_EXIT_CODE=$?
+          
+          if [ $SIGNING_EXIT_CODE -ne 0 ]; then
+            echo "Signing job failed with exit code $SIGNING_EXIT_CODE"
+            echo "Error output: $SIGNING_OUTPUT"
+            exit 0  # Continue workflow but log the failure
+          fi
+          
+          JOB_ID="$SIGNING_OUTPUT"
           [ -z "$JOB_ID" ] && echo "No job ID returned" && exit 0
           echo "Job ID: $JOB_ID"
           
           echo "Waiting for signing job to complete..."
-          aws signer wait successful-signing-job --job-id "$JOB_ID" || exit 0
+          if ! aws signer wait successful-signing-job --job-id "$JOB_ID" 2>&1; then
+            echo "Warning: Signing job wait failed or timed out"
+            exit 0
+          fi
           echo "Signing completed"
           
           echo "Moving signed layer..."
-          SIGNED=$(aws signer describe-signing-job --job-id "$JOB_ID" --query 'signedObject.s3.key' --output text 2>/dev/null)
+          SIGNED=$(aws signer describe-signing-job --job-id "$JOB_ID" --query 'signedObject.s3.key' --output text 2>&1)
+          DESCRIBE_EXIT_CODE=$?
+          
+          if [ $DESCRIBE_EXIT_CODE -ne 0 ]; then
+            echo "Warning: Failed to describe signing job"
+            echo "Error: $SIGNED"
+            exit 0
+          fi
+          
           echo "SIGNED value: '$SIGNED'"
           if [ -n "$SIGNED" ]; then
             # # Delete the original unsigned file first
