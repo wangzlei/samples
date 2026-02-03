@@ -70,6 +70,8 @@ jobs:
           echo "Checking for signing profile..."
           PROFILE=$(aws signer list-signing-profiles --query "profiles[?profileName=='lambdaFunction'].arn" --output text 2>/dev/null)
           [ -z "$PROFILE" ] && echo "No signing profile found, skipping" && exit 0
+
+          echo "PROFILE is: $PROFILE"
           
           echo "Starting signing job..."
           JOB_ID=$(aws signer start-signing-job \
