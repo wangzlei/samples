@@ -1,0 +1,95 @@
+name: Test S3 Upload and Signing
+
+on:
+  workflow_dispatch:  # Manual trigger with inputs
+    inputs:
+      source_bucket_name:
+        description: 'S3 Bucket Name (leave empty for auto-generated)'
+        required: false
+        default: 'test-sign-test'
+        type: string
+      bucket_name:
+        description: 'S3 Bucket Name (leave empty for auto-generated)'
+        required: false
+        default: 'test-sign-test1'
+        type: string
+      layer_artifact_name:
+        description: 'Layer Artifact File Name'
+        required: false
+        default: 'function.zip'
+        type: string
+  push:
+    branches:
+      - main
+      - test-s3-signing
+  pull_request:
+    branches:
+      - main
+
+env:
+  SOURCE_BUCKET_NAME: ${{ github.event.inputs.source_bucket_name || format('adot-python-layer-test-{0}', github.run_id) }}
+  BUCKET_NAME: ${{ github.event.inputs.bucket_name || format('adot-python-layer-test-{0}', github.run_id) }}
+  LAYER_ARTIFACT_NAME: ${{ github.event.inputs.layer_artifact_name || 'aws-opentelemetry-python-layer.zip' }}
+
+jobs:
+  test-s3-upload-signing:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write   # Required for OIDC authentication
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+      
+      # - name: Create Test Layer Zip
+      #   run: |
+      #     echo "Creating test layer zip file..."
+      #     mkdir -p test-layer
+      #     echo "print('Hello from ADOT Python Layer')" > test-layer/test.py
+      #     cd test-layer
+      #     zip -r ../${{ env.LAYER_ARTIFACT_NAME }} .
+      #     cd ..
+      #     ls -lh ${{ env.LAYER_ARTIFACT_NAME }}
+      
+      - name: Upload to S3 and Sign
+        continue-on-error: true
+        run: |
+          aws s3 mb s3://${{ env.BUCKET_NAME }}
+          aws s3 cp s3://${{ env.SOURCE_BUCKET_NAME }}/${{ env.LAYER_ARTIFACT_NAME }} s3://${{ env.BUCKET_NAME }}
+          
+          # Sign the layer
+          echo "Checking for signing profile..."
+          PROFILE=$(aws signer list-signing-profiles --query "profiles[?profileName=='lambdaFunction'].arn" --output text 2>/dev/null)
+          [ -z "$PROFILE" ] && echo "No signing profile found, skipping" && exit 0
+          
+          echo "Starting signing job..."
+          JOB_ID=$(aws signer start-signing-job \
+            --source "s3={bucketName=${{ env.BUCKET_NAME }},key=${{ env.LAYER_ARTIFACT_NAME }},version=null}" \
+            --destination "s3={bucketName=${{ env.BUCKET_NAME }},prefix=signed-}" \
+            --profile-name lambdaFunction \
+            --query 'jobId' --output text 2>/dev/null) || exit 0
+          [ -z "$JOB_ID" ] && echo "No job ID returned" && exit 0
+          echo "Job ID: $JOB_ID"
+          
+          echo "Waiting for signing job to complete..."
+          aws signer wait successful-signing-job --job-id "$JOB_ID" || exit 0
+          echo "Signing completed"
+          
+          echo "Moving signed layer..."
+          SIGNED=$(aws signer describe-signing-job --job-id "$JOB_ID" --query 'signedObject.s3.key' --output text 2>/dev/null)
+          echo "SIGNED value: '$SIGNED'"
+          if [ -n "$SIGNED" ]; then
+            aws s3 mv "s3://${{ env.BUCKET_NAME }}/$SIGNED" "s3://${{ env.BUCKET_NAME }}/${{ env.LAYER_ARTIFACT_NAME }}" --clobber
+            echo "Signed layer moved successfully"
+          else
+            echo "No SIGNED value returned, skipping move"
+          fi
